@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param } from '@nestjs/common';
 import { MachinesService } from './machines.service';
 
 @Controller('machines')
@@ -20,6 +20,11 @@ getMapData(@Query('building') building?: string) {
   return this.machinesService.getMapData(building);
 }
 
+@Get(':machineid/time')
+  getUnreadAlerts(@Param('machineid') machineid: string) {
+    return this.machinesService.getUnreadMachines(machineid);
+  }
+
   @Get()
   findAll(
     @Query('building') building?: string,
@@ -27,4 +32,5 @@ getMapData(@Query('building') building?: string) {
   ) {
     return this.machinesService.findAll(building, type);
   }
+
 }

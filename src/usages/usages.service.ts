@@ -72,7 +72,7 @@ export class UsagesService {
     usage.endTime = new Date();
     await usage.save();
 
-  machine.status = 'done';
+  machine.status = 'available';
   machine.remainingMinutes = 0;
   machine.startedAt = null as any;
   machine.expectedEndTime = null as any;

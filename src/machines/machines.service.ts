@@ -26,6 +26,23 @@ export class MachinesService {
     return Math.round(minutes / 10) * 10;
   }
 
+private formatDisplayTime(minutes: number): string {
+  if (minutes <= 0) return '사용 종료';
+
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+
+  if (hours > 0 && mins > 0) {
+    return `${hours}시간 ${mins}분`;
+  }
+
+  if (hours > 0) {
+    return `${hours}시간`;
+  }
+
+  return `${mins}분`;
+}
+
   async processFinishedMachines(): Promise<any[]> {
     const machines = await this.machineModel.find({
       status: 'in_use',
@@ -41,7 +58,7 @@ export class MachinesService {
       const end = new Date(machine.expectedEndTime).getTime();
 
       if (end <= now) {
-        machine.status = 'done';
+        machine.status = 'available';
         machine.remainingMinutes = 0;
         await machine.save();
 
@@ -272,5 +289,48 @@ export class MachinesService {
 
       await machine.save();
     }
+  }
+
+  async getUnreadMachines(machineid: string) {
+  const machine = await this.machineModel.findById(machineid).lean();
+
+  if (!machine) {
+    throw new Error('기기를 찾을 수 없습니다.');
+  }
+
+  // let rawRemaining = 0;
+  // let roundedRemaining = 0;
+  // let displayTime = '사용 가능';
+
+  // if (machine.status === 'in_use' && machine.expectedEndTime) {
+  //   rawRemaining = this.getRemainingMinutes(machine.expectedEndTime);
+  //   roundedRemaining = this.roundToNearest10Minutes(rawRemaining);
+  //   displayTime = this.formatDisplayTime(roundedRemaining);
+  // }
+
+  // if (machine.status === 'done') {
+  //   displayTime = '사용 종료';
+  // }
+
+  // if (machine.status === 'available') {
+  //   displayTime = '사용 가능';
+  // }
+
+  return {
+    machineNumber: machine.machineNumber,
+    type : machine.type,
+    building: machine.building,
+    status: machine.status,
+    remainingMinutes: machine.remainingMinutes,
+  };
+
+  // return {
+  //   machineNumber: machine.machineNumber,
+  //   type: machine.type,
+  //   building: machine.building,
+  //   status: machine.status,
+  //   remainingMinutes: roundedRemaining,
+  //   displayTime,
+  // };
   }
 }

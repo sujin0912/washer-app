@@ -23,7 +23,5 @@ import { AlertsModule } from './alerts/alerts.module';
     NotificationsModule,
     AlertsModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}
