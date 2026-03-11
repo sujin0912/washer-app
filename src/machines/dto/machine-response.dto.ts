@@ -9,4 +9,5 @@ export class MachineResponseDto {
   status: 'available' | 'in_use' | 'done';
 
   remainingMinutes: number;
+  expectedEndTime?: string | null;
 }

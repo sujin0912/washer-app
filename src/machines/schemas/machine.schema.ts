@@ -25,6 +25,9 @@ export class Machine {
   remainingMinutes: number;
 
 @Prop({ type: Date, default: null })
+startedAt: Date;
+
+@Prop({ type: Date, default: null })
 expectedEndTime: Date;
 
   @Prop({ required: true })

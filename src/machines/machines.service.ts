@@ -10,12 +10,55 @@ export class MachinesService {
     @InjectModel(Machine.name) private machineModel: Model<MachineDocument>,
   ) {}
 
-  async findAll(building?: string, type?: string): Promise<MachineResponseDto[]> {
+  private getRemainingMinutes(expectedEndTime?: Date | null): number {
+    if (!expectedEndTime) return 0;
 
+    const now = Date.now();
+    const end = new Date(expectedEndTime).getTime();
+    const diffMs = end - now;
+
+    if (diffMs <= 0) return 0;
+
+    return Math.ceil(diffMs / 60000);
+  }
+
+  private roundToNearest10Minutes(minutes: number): number {
+    return Math.round(minutes / 10) * 10;
+  }
+
+  async processFinishedMachines(): Promise<any[]> {
+    const machines = await this.machineModel.find({
+      status: 'in_use',
+      expectedEndTime: { $ne: null },
+    });
+
+    const finishedMachines: any[] = [];
+
+    for (const machine of machines) {
+      if (!machine.expectedEndTime) continue;
+
+      const now = Date.now();
+      const end = new Date(machine.expectedEndTime).getTime();
+
+      if (end <= now) {
+        machine.status = 'done';
+        machine.remainingMinutes = 0;
+        await machine.save();
+
+        finishedMachines.push(machine);
+      }
+    }
+
+    return finishedMachines;
+  }
+
+  async findAll(
+    building?: string,
+    type?: string,
+  ): Promise<MachineResponseDto[]> {
     const filter: any = {};
 
     if (building) filter.building = building;
-
     if (type) filter.type = type;
 
     const machines = await this.machineModel
@@ -23,15 +66,30 @@ export class MachinesService {
       .sort({ building: 1, machineNumber: 1 })
       .lean();
 
-     return machines.map((machine) => ({
-      machineId: String(machine._id),
-    machineNumber: machine.machineNumber,
-    type: machine.type,
-    building: machine.building,
-    status: machine.status,
-    remainingMinutes: machine.remainingMinutes,
-  }));
-}
+    return machines.map((machine) => {
+      const rawRemaining =
+        machine.status === 'in_use'
+          ? this.getRemainingMinutes(machine.expectedEndTime)
+          : 0;
+
+      const roundedRemaining =
+        machine.status === 'in_use'
+          ? this.roundToNearest10Minutes(rawRemaining)
+          : 0;
+
+      return {
+        machineId: String(machine._id),
+        machineNumber: machine.machineNumber,
+        type: machine.type,
+        building: machine.building,
+        status: machine.status,
+        remainingMinutes: roundedRemaining,
+        expectedEndTime: machine.expectedEndTime
+          ? new Date(machine.expectedEndTime).toISOString()
+          : null,
+      };
+    });
+  }
 
   async getAvailableCounts() {
     const oldDryer = await this.machineModel.countDocuments({
@@ -114,107 +172,105 @@ export class MachinesService {
 
     return { message: '기기 더미 데이터가 저장되었습니다.' };
   }
-  
+
   async getMapData(building?: string) {
-  const filter: any = {};
+    const filter: any = {};
 
-  if (building) {
-    filter.building = building;
-  }
-
-  const machines = await this.machineModel
-    .find(filter)
-    .sort({ machineNumber: 1 })
-    .lean();
-
-  return {
-    building: building || 'all',
-    buildingLabel:
-      building === 'old'
-        ? '구관'
-        : building === 'new'
-        ? '신관'
-        : '전체',
-    machines: machines.map((machine) => ({
-      machineId: String(machine._id),
-      machineNumber: machine.machineNumber,
-      type: machine.type,
-      typeLabel: machine.type === 'washer' ? '세탁기' : '건조기',
-      status: machine.status,
-      statusLabel:
-        machine.status === 'available'
-          ? '사용 가능'
-          : machine.status === 'in_use'
-          ? '사용 중'
-          : '사용 완료',
-      x: machine.x,
-      y: machine.y,
-    })),
-  };
-}
-
-getDefaultMinutes(type: string) {
-  if (type === 'washer') return 60;
-  if (type === 'dryer') return 90;
-  return 0;
-}
-
-async startMachine(machineId: string) {
-  const machine = await this.machineModel.findById(machineId);
-
-  if (!machine) {
-    throw new Error('기기를 찾을 수 없습니다.');
-  }
-
-  const defaultMinutes = this.getDefaultMinutes(machine.type);
-
-  const expectedEndTime = new Date(Date.now() + defaultMinutes * 60 * 1000);
-
-  machine.status = 'in_use';
-  machine.remainingMinutes = defaultMinutes;
-  machine.expectedEndTime = expectedEndTime;
-
-  await machine.save();
-
-  return machine;
-}
-
-async finishMachine(machineId: string) {
-  const machine = await this.machineModel.findById(machineId);
-
-  if (!machine) {
-    throw new Error('기기를 찾을 수 없습니다.');
-  }
-
-  machine.status = 'available';
-  machine.remainingMinutes = 0;
-  machine.expectedEndTime = null as any;
-
-  await machine.save();
-
-  return machine;
-}
-
-async updateRemainingTimes() {
-  const machines = await this.machineModel.find({ status: 'in_use' });
-
-  for (const machine of machines) {
-    if (!machine.expectedEndTime) continue;
-
-    const now = new Date().getTime();
-    const end = new Date(machine.expectedEndTime).getTime();
-
-    const diffMs = end - now;
-    const diffMinutes = Math.max(0, Math.ceil(diffMs / 60000));
-
-    machine.remainingMinutes = diffMinutes;
-
-    if (diffMinutes === 0) {
-      machine.status = 'done';
+    if (building) {
+      filter.building = building;
     }
 
-    await machine.save();
-  }
-}
+    const machines = await this.machineModel
+      .find(filter)
+      .sort({ machineNumber: 1 })
+      .lean();
 
+    return {
+      building: building || 'all',
+      buildingLabel:
+        building === 'old'
+          ? '구관'
+          : building === 'new'
+          ? '신관'
+          : '전체',
+      machines: machines.map((machine) => ({
+        machineId: String(machine._id),
+        machineNumber: machine.machineNumber,
+        type: machine.type,
+        typeLabel: machine.type === 'washer' ? '세탁기' : '건조기',
+        status: machine.status,
+        statusLabel:
+          machine.status === 'available'
+            ? '사용 가능'
+            : machine.status === 'in_use'
+            ? '사용 중'
+            : '사용 완료',
+        x: machine.x,
+        y: machine.y,
+      })),
+    };
+  }
+
+  getDefaultMinutes() {
+    return 120;
+  }
+
+  async startMachine(machineId: string) {
+    const machine = await this.machineModel.findById(machineId);
+
+    if (!machine) {
+      throw new Error('기기를 찾을 수 없습니다.');
+    }
+
+    const defaultMinutes = this.getDefaultMinutes();
+    const startedAt = new Date();
+    const expectedEndTime = new Date(
+      startedAt.getTime() + defaultMinutes * 60 * 1000,
+    );
+
+    machine.status = 'in_use';
+    machine.startedAt = startedAt;
+    machine.remainingMinutes = defaultMinutes;
+    machine.expectedEndTime = expectedEndTime;
+
+    await machine.save();
+
+    return machine;
+  }
+
+  async finishMachine(machineId: string) {
+    const machine = await this.machineModel.findById(machineId);
+
+    if (!machine) {
+      throw new Error('기기를 찾을 수 없습니다.');
+    }
+
+    machine.status = 'done';
+    machine.remainingMinutes = 0;
+    machine.startedAt = null as any;
+    machine.expectedEndTime = null as any;
+
+    await machine.save();
+
+    return machine;
+  }
+
+  async updateRemainingTimes() {
+    const machines = await this.machineModel.find({ status: 'in_use' });
+
+    for (const machine of machines) {
+      if (!machine.expectedEndTime) continue;
+
+      const rawRemaining = this.getRemainingMinutes(machine.expectedEndTime);
+      const roundedRemaining = this.roundToNearest10Minutes(rawRemaining);
+
+      machine.remainingMinutes = roundedRemaining;
+
+      if (rawRemaining === 0) {
+        machine.status = 'done';
+      }
+
+      await machine.save();
+    }
+  }
 }

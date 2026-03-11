@@ -30,12 +30,13 @@ export class UsagesService {
       throw new BadRequestException('이미 사용 중인 기기입니다.');
     }
 
-  const defaultMinutes = machine.type === 'washer' ? 60 : 90;
-  const expectedEndTime = new Date(Date.now() + defaultMinutes * 60 * 1000);
+  const startedAt = new Date();
+  const expectedEndTime = new Date(startedAt.getTime() + 120 * 60 * 1000);
 
   machine.status = 'in_use';
-  machine.remainingMinutes = defaultMinutes;
+  machine.startedAt = startedAt;
   machine.expectedEndTime = expectedEndTime;
+  machine.remainingMinutes = 120;
   await machine.save();
 
    const usage = await this.usageModel.create({
@@ -71,10 +72,11 @@ export class UsagesService {
     usage.endTime = new Date();
     await usage.save();
 
-    machine.status = 'available';
-    machine.remainingMinutes = 0;
-    machine.expectedEndTime = null as any;
-    await machine.save();
+  machine.status = 'done';
+  machine.remainingMinutes = 0;
+  machine.startedAt = null as any;
+  machine.expectedEndTime = null as any;
+  await machine.save();
 
      const enabledUsers = await this.notificationsService.findEnabledUsers(
     machine.building,
